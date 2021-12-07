@@ -45,11 +45,6 @@ from ryu.ofproto.ether import ETH_TYPE_LLDP        # import lldp library (task 3
 
 class SimpleSwitch(app_manager.RyuApp):
     OFP_VERSIONS = [ofproto_v1_0.OFP_VERSION]
-
-    """ My Code Begin """
-    # set up traffic counter to count all the traffic
-    #traffic_counter = 0
-    """ My Code End """
     
     """ My Code Begin """
     # predefined IP address and MAC address for h1, h2 & h3
@@ -70,26 +65,45 @@ class SimpleSwitch(app_manager.RyuApp):
         
         """ My Code Begin """
         self.isInitialize = False
+        #associate interfaces/ports with hosts.
+        #start with -1 to indicate no association has occured.
         self.portHost1 = -1;
         self.portHost2 = -1;
         self.portHost3 = -1;
-        self.stats = []
         """ My Code End """
-
+        
     def add_flow(self, datapath, in_port, dst, actions):
+        """Add a flow (route) to the flow table (switch table) of the datapath (switch)."""
+        #we are using openflow protocol
         ofproto = datapath.ofproto
         
         """ My Code Begin """
         # add wildcards
+        # wildcards are used when matching in the same way * is used in unix.
+        # e.g match 10.10.*.* will match any IP with 10.10 start structure 
+        # 10.10.3.4 - MATCH
+        # 10.3.0.10 - NO MATCH
+        # 10.10.1.1 - MATCH
         # The following code was based on Ryu offical code
         # Link: https://github.com/osrg/ryu/blob/master/ryu/app/simple_switch_stp.py
         wildcards = ofproto_v1_0.OFPFW_ALL
         wildcards &= ~ofproto_v1_0.OFPFW_IN_PORT
         wildcards &= ~ofproto_v1_0.OFPFW_DL_DST
 
+        #we want to match with any packet that has the following conditions:
+        # Switch input port / interface == in_port
+        # Desination MAC address / Ethernet destination address == dst
+        # 0 just means any (wildcard) so we don't care what these fields are
         match = datapath.ofproto_parser.OFPMatch(wildcards, in_port, 0, dst, 0, 0, 0, 0, 0, 0, 0, 0, 0)
         
-        # set hard time to 60, so that the rules expire periodically and trigger flow-deletion messages that contain the counter values for the expired rules.
+        # OFPFlowMod creates a message that will tell the switch to modify its table
+        # datapath is our switch
+        # match means the routing action only applies to packets that "match" a certain criteria
+        # command=ofproto.OFPFC_ADD adds this entry to the flow table
+        # idle_timeout is the amount of time it will take for this flow to be deleted if it is not being used
+        # hard_timeout is the overall amount of time until the flow is deleted
+        # priority sets how important this rule is
+        # actions defines what to do with the packet
         mod = datapath.ofproto_parser.OFPFlowMod(
             datapath=datapath, match=match, cookie=0,
             command=ofproto.OFPFC_ADD, idle_timeout=0, hard_timeout=60,
