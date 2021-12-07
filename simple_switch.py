@@ -61,6 +61,8 @@ class SimpleSwitch(app_manager.RyuApp):
 
     def __init__(self, *args, **kwargs):
         super(SimpleSwitch, self).__init__(*args, **kwargs)
+        #A dictionary that associates MAC addresses of hosts to ports
+        #i.e a routing table internal to the controller
         self.mac_to_port = {}
         
         """ My Code Begin """
@@ -113,37 +115,52 @@ class SimpleSwitch(app_manager.RyuApp):
         
         datapath.send_msg(mod)
 
+    #This is called when packets arrive at the controller (ofp.EventOFPPacketIn)
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
     def _packet_in_handler(self, ev):
+        #the contents of the packet
         msg = ev.msg
+        #the switch sending the packet
         datapath = msg.datapath
-        ofproto = datapath.ofprot        
+        #the protocol of the packet (openflow 13.0)
+        ofproto = datapath.ofprot    
+        #id of the switch (we can have multiple switches in the network)
         dpid = datapath.id
         
         """ My Code Begin """
         # unpack using '6s6sH' to have the packet in certain format
         # The following code was based on Ryu offical code
         # Link: https://github.com/osrg/ryu/blob/master/ryu/app/simple_switch_stp.py
+        # grab the destination MAC address, source interface, and ethernet type
         dst, src, _eth_type = struct.unpack_from('!6s6sH', buffer(msg.data), 0)
         
-        # get the port number of host 1 via MAC address
+        # If we haven't learned it yet, get the port number of host 1 via MAC address
         if (self.portHost1 == -1 and src == SimpleSwitch.mac_host1):
             self.portHost1 = msg.in_port
         
-        # send stats request to switch if host 1 receievd a packet
+        # send status request to switch if host 1 receievd a packet
         if (not self.isInitialize and self.portHost1 != -1):
             self.isInitialize = True
             self._port_status_request(datapath)
         """ My Code End """
-
-
+        
+        #enter the switch into our internal routing table
+        #this routing table has support for multiple switches
+        #so we need a nested dictionary for each switch
         self.mac_to_port.setdefault(dpid, {})
 
         self.logger.info("packet in %s %s %s %s", dpid, src, dst, msg.in_port)
 
         # learn a mac address to avoid FLOOD next time.
+        # i.e associate a interface with the source MAC address so that
+        # we don't have to broadcast like a hub
+        print("MAC table")
+        print(self.mac_to_port)
+        # enter a entry into the sub-dictionary corresponding to our specific switch (identified by dpid) 
+        # associating the MAC source of the packet with the port it came in.
         self.mac_to_port[dpid][src] = msg.in_port
 
+        
         if dst in self.mac_to_port[dpid]:
             out_port = self.mac_to_port[dpid][dst]
         else:
