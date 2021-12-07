@@ -86,14 +86,7 @@ class SimpleSwitch(app_manager.RyuApp):
         wildcards = ofproto_v1_0.OFPFW_ALL
         wildcards &= ~ofproto_v1_0.OFPFW_IN_PORT
         wildcards &= ~ofproto_v1_0.OFPFW_DL_DST
-        """ My Code End """
 
-        """ 
-        match = datapath.ofproto_parser.OFPMatch(
-            in_port=in_port, dl_dst=haddr_to_bin(dst))
-        """
-        
-        """ My Code Begin """
         match = datapath.ofproto_parser.OFPMatch(wildcards, in_port, 0, dst, 0, 0, 0, 0, 0, 0, 0, 0, 0)
         
         # set hard time to 60, so that the rules expire periodically and trigger flow-deletion messages that contain the counter values for the expired rules.
@@ -104,29 +97,13 @@ class SimpleSwitch(app_manager.RyuApp):
             flags=ofproto.OFPFF_SEND_FLOW_REM, actions=actions)
         """ My Code End """
         
-        """ 
-        mod = datapath.ofproto_parser.OFPFlowMod(
-            datapath=datapath, match=match, cookie=0,
-            command=ofproto.OFPFC_ADD, idle_timeout=0, hard_timeout=0,
-            priority=ofproto.OFP_DEFAULT_PRIORITY,
-            flags=ofproto.OFPFF_SEND_FLOW_REM, actions=actions)
-        """
-        
         datapath.send_msg(mod)
 
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
     def _packet_in_handler(self, ev):
         msg = ev.msg
         datapath = msg.datapath
-        ofproto = datapath.ofproto
-
-        """
-        pkt = packet.Packet(msg.data)
-        eth = pkt.get_protocol(ethernet.ethernet)
-        dst = eth.dst
-        src = eth.src
-        """
-        
+        ofproto = datapath.ofprot        
         dpid = datapath.id
         
         """ My Code Begin """
@@ -245,26 +222,6 @@ class SimpleSwitch(app_manager.RyuApp):
         # send port status request every 1 second
         time.sleep(1)
         self._port_status_request(ev.msg.datapath)
-    
-    """
-    @set_ev_cls(ofp_event.EventOFPFlowStatsReply, MAIN_DISPATCHER)
-    def _flow_stats_reply_handler(self, ev):
-        body = ev.msg.body
-        self.logger.info('datapath         '
-                         'in-port  eth-dst           '
-                         'out-port packets  bytes')
-        self.logger.info('---------------- '
-                         '-------- ----------------- '
-                         '-------- -------- --------')
-        for stat in sorted([flow for flow in body if flow.priority == 1],
-                           key=lambda flow: (flow.match['in_port'],
-                                             flow.match['dst'])):
-            self.logger.info('%016x %8x %17s %8x %8d %8d',
-                             ev.msg.datapath.id,
-                             stat.match['in_port'], stat.match['dst'],
-                             stat.instructions[0].actions[0].port,
-                             stat.packet_count, stat.byte_count)
-    """
 
     # send port request
     def _port_status_request(self, datapath):
@@ -273,31 +230,3 @@ class SimpleSwitch(app_manager.RyuApp):
         req = ofp_parser.OFPPortStatsRequest(datapath, 0, self.portHost1)
         datapath.send_msg(req) 
     """ My Code End """
-    
-    """ My Code Begin """
-    # topology discovery
-    # The following code was based on following websites
-    # Link: http://sdn-lab.com/2014/12/31/topology-discovery-with-ryu/
-    #       http://sdn-lab.com/2014/12/25/shortest-path-forwarding-with-openflow-on-ryu/
-    """@set_ev_cls(event.EventSwitchEnter)
-    def get_topology_data(self, ev):
-        switch_list = get_switch(self.topology_api_app, None)
-        switches=[switch.dp.id for switch in switch_list]
-        links_list = get_link(self.topology_api_app, None)
-        links=[(link.src.dpid,link.dst.dpid,{'port':link.src.port_no}) for link in links_list]
-    """
-    """ My Code End """
-
-""" My Code Begin """
-# add LLDP database (imcompleted)
-"""class lldp(object):
-    def lldp_packet(dpid, port_no, dl_addr, ttl):
-        pkt = packet.Packet()
-        
-        dst = lldp.LLDP_MAC_NEAREST_BRIDGE
-        src = dl_addr
-        ethertype = ETH_TYPE_LLDP
-        eth_pkt = ethernet.ethernet(dst, src, ethertype)
-        pkt.add_protocol(eth_pkt)
-"""
-""" My Code End """
