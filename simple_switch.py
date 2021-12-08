@@ -114,6 +114,53 @@ class SimpleSwitch(app_manager.RyuApp):
         """ My Code End """
         
         datapath.send_msg(mod)
+        
+    """ My Code Begin """
+    # if the flow is between host 2 and host 3 -> true; otherwise, set to false.
+    def _block_packet(self, data):
+        data_packet = packet.Packet(data)
+        #grab packet source and destination
+        #into str format
+        p_src = ipv4_to_str(protocol.src)
+        p_dst = ipv4_to_str(protocol.dst)
+        for protocol in data_packet.protocols:
+            #for every ipv4 packet
+            if protocol.protocol_name == 'ipv4':
+                #if it is travelling from:
+                # h2 -> h3 OR h3 -> h32
+                # Block it.
+                if (p_src == SimpleSwitch.ipv4_host2 and 
+                    p_dst == SimpleSwitch.ipv4_host3):
+                    return True
+                elif (p_src == SimpleSwitch.ipv4_host3 and 
+                     p_dst == SimpleSwitch.ipv4_host2):
+                    return True
+        #otherwise, let it through.
+        return False
+    
+    # block flow between host 2 and host 3 as required
+    def _block_flow(self, datapath, ip1, ip2):
+        matches = []
+        ofproto = datapath.ofproto
+        
+        # response to table stats - wildcards (32 bits), which contains all the masks for fields in match structure
+        wildcards = ofproto_v1_0.OFPFW_ALL
+        wildcards &= ~(ofproto_v1_0.OFPFW_NW_SRC_ALL | ofproto_v1_0.OFPFW_NW_DST_ALL)
+        
+        matches.append(datapath.ofproto_parser.OFPMatch(
+                       wildcards, 0, 0, 0, 0, 0, 0, 0, 0, ip1, ip2, 0, 0))
+        matches.append(datapath.ofproto_parser.OFPMatch(
+                       wildcards, 0, 0, 0, 0, 0, 0, 0, 0, ip2, ip1, 0, 0))
+    
+        # set up a rule with the hard time, and then send the request to the switch
+        for match in matches:
+            mod = datapath.ofproto_parser.OFPFlowMod(
+                datapath=datapath, match=match, cookie=0,
+                command=ofproto.OFPFC_ADD, idle_timeout=0, hard_timeout=10,
+                priority=ofproto.OFP_DEFAULT_PRIORITY,
+                flags=ofproto.OFPFF_SEND_FLOW_REM, actions=[])
+            datapath.send_msg(mod)
+    """ My Code End """
 
     #This is called when packets arrive at the controller (ofp.EventOFPPacketIn)
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
@@ -146,7 +193,7 @@ class SimpleSwitch(app_manager.RyuApp):
         
         #enter the switch into our internal routing table
         #this routing table has support for multiple switches
-        #so we need a nested dictionary for each switch
+        #so we need a nested dictionary inside the dictionary for each switch
         self.mac_to_port.setdefault(dpid, {})
 
         self.logger.info("packet in %s %s %s %s", dpid, src, dst, msg.in_port)
@@ -160,7 +207,14 @@ class SimpleSwitch(app_manager.RyuApp):
         # associating the MAC source of the packet with the port it came in.
         self.mac_to_port[dpid][src] = msg.in_port
 
-        
+        """
+        set the output port.
+        if the destination MAC address (dst) is in the dictionary for our switch
+        (addressed by dpid), then grab the corresponding output port.
+        otherwise, act as a hub and broadcast out of all available ports
+        (this is triggered by OFPP_FLOOD). - A "Flood" is the same as a 
+        broadcast.
+        """
         if dst in self.mac_to_port[dpid]:
             out_port = self.mac_to_port[dpid][dst]
         else:
@@ -183,41 +237,6 @@ class SimpleSwitch(app_manager.RyuApp):
             datapath=datapath, buffer_id=msg.buffer_id, in_port=msg.in_port,
             actions=actions)
         datapath.send_msg(out)
-    
-    
-    """ My Code Begin """
-    # if the flow is between host 2 and host 3 -> true; otherwise, set to false.
-    def _block_packet(self, data):
-        data_packet = packet.Packet(data)
-        for protocol in data_packet.protocols:
-            if (protocol.protocol_name == 'ipv4' and ((ipv4_to_str(protocol.src) == SimpleSwitch.ipv4_host2 and ipv4_to_str(protocol.dst) == SimpleSwitch.ipv4_host3) or (ipv4_to_str(protocol.src) == SimpleSwitch.ipv4_host3 and ipv4_to_str(protocol.dst) == SimpleSwitch.ipv4_host2))):
-                return True
-        return False
-    
-    # block flow between host 2 and host 3 as required
-    def _block_flow(self, datapath, ip1, ip2):
-        matches = []
-        ofproto = datapath.ofproto
-        
-        # response to table stats - wildcards (32 bits), which contains all the masks for fields in match structure
-        wildcards = ofproto_v1_0.OFPFW_ALL
-        wildcards &= ~(ofproto_v1_0.OFPFW_NW_SRC_ALL | ofproto_v1_0.OFPFW_NW_DST_ALL)
-        
-        matches.append(datapath.ofproto_parser.OFPMatch(
-                       wildcards, 0, 0, 0, 0, 0, 0, 0, 0, ip1, ip2, 0, 0))
-        matches.append(datapath.ofproto_parser.OFPMatch(
-                       wildcards, 0, 0, 0, 0, 0, 0, 0, 0, ip2, ip1, 0, 0))
-    
-        # set up a rule with the hard time, and then send the request to the switch
-        for match in matches:
-            mod = datapath.ofproto_parser.OFPFlowMod(
-                datapath=datapath, match=match, cookie=0,
-                command=ofproto.OFPFC_ADD, idle_timeout=0, hard_timeout=10,
-                priority=ofproto.OFP_DEFAULT_PRIORITY,
-                flags=ofproto.OFPFF_SEND_FLOW_REM, actions=[])
-            datapath.send_msg(mod)
-    """ My Code End """
-    
     
     @set_ev_cls(ofp_event.EventOFPPortStatus, MAIN_DISPATCHER)
     def _port_status_handler(self, ev):
