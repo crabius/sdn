@@ -279,7 +279,7 @@ class OFPHandler(ryu.base.app_manager.RyuApp):
             hex(msg.xid),
             ofp.ofp_msg_type_to_str(msg.msg_type))
         # <------------------------ fix version bug -------------------->
-        if msg.type == ofp.OFPET_EXPERIMENTER and ofp.OFP_VERSION > 0x01:
+        if ofp.OFP_VERSION > 0x01 and msg.type == ofp.OFPET_EXPERIMENTER:
             self.logger.debug(
                 "OFPErrorExperimenterMsg(type=%s, exp_type=%s,"
                 " experimenter=%s, data=b'%s')",
