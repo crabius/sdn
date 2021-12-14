@@ -19,8 +19,9 @@ cp ./sdn/ofp_handler.py /usr/lib/python3/dist-packages/ryu/controller/ofp_handle
 
 echo "you must install zeek yourself, cannot do this via command line."
 echo "go to https://software.opensuse.org/download.html?project=security%3Azeek&package=zeek"
-echo "you need to add zeek to path. Find its path with whereis zeek"
-echo 'then add this variable path to $PATH with export PATH="path:$PATH"'
+echo "adding zeek to path"
+echo 'export PATH="/opt/zeek/bin/:$PATH"' >> ~/.profile
+source ~/.profile
 
 echo "starting mininet in background. To interact with mininet rerun this command in another tab before you run ryu."
 # run mininet controller
