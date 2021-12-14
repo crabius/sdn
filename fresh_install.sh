@@ -2,13 +2,16 @@
 # running on a fresh VM install. Note this assumes an ubuntu VM.
 
 # install packages and grab repo
-echo "installing packages..."
+echo "installing general packages..."
 sudo apt-get update 
 sudo apt install git
 sudo apt-get install vim
 sudo apt-get install python3-pip
 sudo apt-get install mininet
 sudo apt install python3-ryu
+
+echo "you must install zeek yourself, cannot do this via command line."
+echo "go to https://software.opensuse.org/download.html?project=security%3Azeek&package=zeek"
 
 #grab repo with custom scripts
 echo "grabbing sdn repo and installing custom scripts"
