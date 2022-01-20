@@ -18,7 +18,7 @@ An OpenFlow 1.0 L2 learning switch implementation.
 """
 
 #Commented by Ben Cravens
-
+#Additional code adapted from https://github.com/yuan901202/vuw_nwen302_sdn_openflow/
 
 from ryu.base import app_manager
 from ryu.controller import ofp_event
@@ -29,11 +29,25 @@ from ryu.lib.mac import haddr_to_bin
 from ryu.lib.packet import packet
 from ryu.lib.packet import ethernet
 from ryu.lib.packet import ether_types
+#new packages for blocking
+from ryu.lib.mac import haddr_to_str
+from ryu.lib.ip import *
 
 #implements a switch class
 class SimpleSwitch(app_manager.RyuApp):
     OFP_VERSIONS = [ofproto_v1_0.OFP_VERSION]
 
+    #predefined IP and MAC addresses for h1, h2, h3
+    ipv4_host1 = '10.0.0.1'
+    ipv4_host2 = '10.0.0.2'
+    ipv4_host3 = '10.0.0.3'
+    ipv4_uint32_host1 = 167772161
+    ipv4_uint32_host2 = 167772162
+    ipv4_uint32_host3 = 167772163
+    mac_host1 = haddr_to_bin('00:00:00:00:00:01')
+    mac_host2 = haddr_to_bin('00:00:00:00:00:02')
+    mac_host3 = haddr_to_bin('00:00:00:00:00:03')
+ 
     #constructor method
     def __init__(self, *args, **kwargs):
         super(SimpleSwitch, self).__init__(*args, **kwargs)
@@ -79,6 +93,48 @@ class SimpleSwitch(app_manager.RyuApp):
             flags=ofproto.OFPFF_SEND_FLOW_REM, actions=actions)
         #send to the switch
         datapath.send_msg(mod)
+
+
+    """ if the flow is between host 2 and host 3, block it."""
+    def block_packet(self, data):
+        data_packet = packet.Packet(data)
+        #grab packet source and destination
+        #into str format
+        for protocol in data_packet.protocols:
+            #only ipv4 packets
+            if protocol.protocol_name == 'ipv4':
+                p_src = protocol.src
+                p_dst = protocol.dst
+                print(p_src, p_dst)
+                # block (h2) <---> (h3) packets
+                if (p_src == SimpleSwitch.ipv4_host2 and
+                        p_dst == SimpleSwitch.ipv4_host3):
+                    return True
+                elif (p_src == SimpleSwitch.ipv4_host3 and
+                        p_dst == SimpleSwitch.ivp4_host2):
+                    return True
+        return False
+
+    #block flow between host2 and host3
+    def block_flow(self, datapath, ip1, ip2):
+        matches=[]
+        ofproto = datapath.ofproto
+
+        #block ip1 -> ip2
+        matches.append(datapath.ofproto_parser.OFPMatch(
+            nw_src=ip1,nw_dst=ip2))
+        #block ip2 -> ip1
+        matches.append(datapath.ofproto_parser.OFPMatch(
+            nw_src=ip2,nw_dst=ip1))
+
+        #send flowmods to switch
+        for match in matches:
+            mod = datapath.ofproto_parser.OFPFlowMod(
+                    datapath=datapath, match=match, cookie=0,
+                    command=ofproto.OFPFC_ADD, idle_timeout=0, 
+                    hard_timeout=10, priority=ofproto.OFP_DEFAULT_PRIORITY,
+                    flags=ofproto.OFPFF_SEND_FLOW_REM, actions=[])
+            datapath.send_msg(mod)
 
     #This function is called when EventOFPPacketIn is the case (a packet has come in)
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
@@ -129,15 +185,19 @@ class SimpleSwitch(app_manager.RyuApp):
             #otherwise behave like a hub (broadcast)
             out_port = ofproto.OFPP_FLOOD
 
-        #define port to send the packet to
-        actions = [datapath.ofproto_parser.OFPActionOutput(out_port)]
-
-        # Add a flow to our switch's flow table to 
-        # avoid broadcasting next time
-        if out_port != ofproto.OFPP_FLOOD:
-            #send packets coming from src MAC to dst via out_port
-            #(which was calculated above via the switch dictionary)
-            self.add_flow(datapath, msg.in_port, dst, src, actions)
+        # BLOCK IPv4 TRAFFIC FROM (H2) <----> (H3)
+        if (self.block_packet(msg.data)):
+            actions=[]
+            self.block_flow(datapath,
+                    SimpleSwitch.ipv4_uint32_host2, SimpleSwitch.ipv4_uint32_host3)
+        else:
+            actions = [datapath.ofproto_parser.OFPActionOutput(out_port)]
+            # Add a flow to our switch's flow table to 
+            # avoid broadcasting next time
+            if out_port != ofproto.OFPP_FLOOD:
+                #send packets coming from src MAC to dst via out_port
+                #(which was calculated above via the switch dictionary)
+                self.add_flow(datapath, msg.in_port, dst, src, actions)
 
         data = None
         #don't send the packet if it is already stored in the switch's buffer
@@ -156,6 +216,7 @@ class SimpleSwitch(app_manager.RyuApp):
         #forward packet to switch with forwarding instructions
         datapath.send_msg(out)
 
+    #tells us when the status of a port changes
     @set_ev_cls(ofp_event.EventOFPPortStatus, MAIN_DISPATCHER)
     def _port_status_handler(self, ev):
         msg = ev.msg
@@ -170,4 +231,4 @@ class SimpleSwitch(app_manager.RyuApp):
         elif reason == ofproto.OFPPR_MODIFY:
             self.logger.info("port modified %s", port_no)
         else:
-            self.logger.info("Illeagal port state %s %s", port_no, reason)
+            self.logger.info("Illegal port state %s %s", port_no, reason)

@@ -37,41 +37,21 @@ class SimpleSwitch(app_manager.RyuApp):
     #constructor method
     def __init__(self, *args, **kwargs):
         super(SimpleSwitch, self).__init__(*args, **kwargs)
-        """
-        dictionary associating MAC addresses to interfaces
-        essentially a "in class" switch table
-        note that because we may have multiple switches, this will be a 
-        dictionary of dictionaries, with one for each switch id.
-        (known as a datapath id)
-        """
+        #dictionary associating MAC addresses to interfaces
+        #essentially a "in class" switch table
         self.mac_to_port = {}
 
     #adds a "flow" (an entry in a switch table associating a MAC address with an
     #output interface
     def add_flow(self, datapath, in_port, dst, src, actions):
-        #get protocol (here the protocol we are using is openflow)
+        #get protocol (here this is openflow)
         ofproto = datapath.ofproto
-        #convert destination and source MAC to binary
-        #i.e machine readable format for switch
-        my_dst=haddr_to_bin(dst)
-        my_src=haddr_to_bin(src)
-        # match means the routing actions only apply to packets that 
-        # "match" a certain criteria
-        # in_port is the Switch input port / interface
-        # dl_dst is the destination MAC address
-        # dl_src is the source MAC address
+
         match = datapath.ofproto_parser.OFPMatch(
             in_port=in_port,
-            dl_dst=my_dst, dl_src=my_src)
+            dl_dst=haddr_to_bin(dst), dl_src=haddr_to_bin(src))
 
-        # make flow modification (switch table modification) message
-        # datapath is the target switch
-        # match defines the matching criteria
-        # command tells us to add this flow to the flow table
-        # idle_timeout is the time the flow can be idle before resetting
-        # hard_timeout is the overall time the flow can last before resetting 
-        # (idle or not)
-        # actions defines what to do with the packet when you recieve it
+        #make flow modification (switch table modification) message
         mod = datapath.ofproto_parser.OFPFlowMod(
             datapath=datapath, match=match, cookie=0,
             command=ofproto.OFPFC_ADD, idle_timeout=0, hard_timeout=0,
@@ -87,43 +67,36 @@ class SimpleSwitch(app_manager.RyuApp):
         msg = ev.msg
         #the switch (here called a datapath)
         datapath = msg.datapath
-        #the protocol (openflow)
+        #the protocol
         ofproto = datapath.ofproto
 
         #packet contents
         pkt = packet.Packet(msg.data)
-        #the packet protocol
         eth = pkt.get_protocol(ethernet.ethernet)
 
         if eth.ethertype == ether_types.ETH_TYPE_LLDP:
             # ignore lldp packet
-            # lldp packet is link layer discovery protocol
-            # this is a link layer protocol used by hosts to
-            # adveritise themselves and their properties on the LAN
             return
-
-        #destination MAC address
         dst = eth.dst
-        #source MAC address
         src = eth.src
 
-        #Switch ID. We need this because there can be multiple switches
-        #in a network.
         dpid = datapath.id
-        #nest a dictionary in our dictionary for this given switch
+        #make an empty entry in the switch table dictionary for this interface ID
         self.mac_to_port.setdefault(dpid, {})
-        #print packet transfer info
+
         self.logger.info("packet in %s %s %s %s", dpid, src, dst, msg.in_port)
 
-        #for the nested dictionary belong to 
-        #switch id=dpid, associate the source
-        #MAC adddress with the port it came in on.
+        #Task 1: block traffic between host 2 and host 3.
+        print("destination MAC: {}".format(dst))
+        print("source MAC: {}".format(src))
+
+        # Associate the mac address with the interface in the table
+        # to avoid broadcasting the packet next time.
         self.mac_to_port[dpid][src] = msg.in_port
 
-        #if our destination is in our switch's dictionary table
+        #if our destination is in the switch table
         if dst in self.mac_to_port[dpid]:
-            #send our packet out of the port that corresponds with 
-            #its destination MAC address
+            #send our packet out of that interface
             out_port = self.mac_to_port[dpid][dst]
         else:
             #otherwise behave like a hub (broadcast)
@@ -132,24 +105,17 @@ class SimpleSwitch(app_manager.RyuApp):
         #define port to send the packet to
         actions = [datapath.ofproto_parser.OFPActionOutput(out_port)]
 
-        # Add a flow to our switch's flow table to 
-        # avoid broadcasting next time
+        # install a flow to avoid broadcasting next time
+        # in other words, modify the switch table on the actual switch
         if out_port != ofproto.OFPP_FLOOD:
-            #send packets coming from src MAC to dst via out_port
-            #(which was calculated above via the switch dictionary)
             self.add_flow(datapath, msg.in_port, dst, src, actions)
 
         data = None
         #don't send the packet if it is already stored in the switch's buffer
         if msg.buffer_id == ofproto.OFP_NO_BUFFER:
             data = msg.data
-        
+
         #prepare the packet to be forwarded to the switch
-        #datapath: the switch
-        #buffer_id: ID assigned by switch
-        #in_port: packet input port
-        #actions: what ports to forward out of?
-        #data: binary packet data or packet.Packet data object
         out = datapath.ofproto_parser.OFPPacketOut(
             datapath=datapath, buffer_id=msg.buffer_id, in_port=msg.in_port,
             actions=actions, data=data)
