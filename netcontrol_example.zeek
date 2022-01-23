@@ -195,3 +195,12 @@ event ssl_established(c: connection)
 	# adding a rule that drops such connections
 	NetControl::shunt_flow([$src_h=id$orig_h, $src_p=id$orig_p, $dst_h=id$resp_h, $dst_p=id$resp_p], 30sec);
 	}
+	
+event connection_established(c: connection) 
+	{
+	print("dropping connections from host h1");
+	#drop connections from one specific address
+	#local badip = 10.10.10.10;
+	#drop it
+	#NetControl::drop_connection(badip,0);
+	}
